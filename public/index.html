@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bot admin</title>
+  <style>
+    :root {
+      --bg: #f6f8f9; --surface: #ffffff; --text: #17252b; --muted: #5b6b73;
+      --line: #d9e1e5; --accent: #0f766e; --accent-text: #ffffff; --danger: #b42318;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1a1f; --surface: #16252c; --text: #e6eef1; --muted: #98aab3;
+        --line: #284049; --accent: #2dd4bf; --accent-text: #08201c; --danger: #f97066;
+        color-scheme: dark;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+    h1 { font-size: 1.5rem; margin: 0 0 16px; }
+    h2 { font-size: 1.1rem; margin: 32px 0 12px; }
+    .stats { display: flex; flex-wrap: wrap; gap: 8px 32px; margin: 0; padding: 16px 0; border-block: 1px solid var(--line); }
+    .stats div { min-width: 110px; }
+    .stats dt { color: var(--muted); font-size: .875rem; }
+    .stats dd { margin: 0; font-size: 1.75rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+    .scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+    table { border-collapse: collapse; width: 100%; min-width: 560px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    th { font-weight: 600; color: var(--muted); font-size: .875rem; }
+    tr:last-child td { border-bottom: 0; }
+    .feedback { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .feedback li { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+    .feedback small { color: var(--muted); display: block; margin-bottom: 4px; }
+    .feedback p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    form { display: grid; gap: 8px; max-width: 560px; }
+    textarea { width: 100%; min-height: 96px; padding: 10px; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; resize: vertical; }
+    button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); padding: 6px 12px; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; padding: 9px 16px; justify-self: start; }
+    button.danger { color: var(--danger); }
+    button:disabled { opacity: .6; cursor: progress; }
+    :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    #status { min-height: 1.5em; color: var(--muted); }
+    .empty { color: var(--muted); padding: 12px 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Bot admin</h1>
+
+  <dl class="stats" id="stats" aria-label="Bot statistics"></dl>
+
+  <h2>Send a message to all users</h2>
+  <form id="broadcast-form">
+    <label for="broadcast-text">Message</label>
+    <textarea id="broadcast-text" maxlength="4000" required></textarea>
+    <button class="primary" type="submit">Send to all users</button>
+    <div id="status" role="status" aria-live="polite"></div>
+  </form>
+
+  <h2>Users</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>ID</th><th>Name</th><th>Username</th><th>Last seen</th><th>Status</th><th></th></tr></thead>
+      <tbody id="users"></tbody>
+    </table>
+  </div>
+
+  <h2>Feedback</h2>
+  <ul class="feedback" id="feedback"></ul>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  async function api(path, options) {
+    const res = await fetch(path, {
+      ...options,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+    return body;
+  }
+
+  function el(tag, text, className) {
+    const node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text; // textContent keeps user-supplied text safe from XSS
+    if (className) node.className = className;
+    return node;
+  }
+
+  function renderStats(s) {
+    const items = [['Users', s.users], ['Active in 24 hours', s.active24h], ['Banned', s.banned], ['Feedback messages', s.feedback]];
+    $('stats').replaceChildren(...items.map(([label, value]) => {
+      const box = el('div');
+      box.append(el('dt', label), el('dd', String(value)));
+      return box;
+    }));
+  }
+
+  function renderUsers(users) {
+    $('users').replaceChildren(...users.map((u) => {
+      const tr = el('tr');
+      tr.append(
+        el('td', String(u.id)),
+        el('td', u.first_name ?? '-'),
+        el('td', u.username ? `@${u.username}` : '-'),
+        el('td', u.last_seen),
+        el('td', u.banned ? 'Banned' : 'Active'),
+      );
+      const action = el('td');
+      const button = el('button', u.banned ? 'Unban' : 'Ban user', u.banned ? '' : 'danger');
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          await api(`/api/users/${u.id}/ban`, { method: 'POST', body: JSON.stringify({ banned: !u.banned }) });
+          await load();
+        } catch (err) {
+          alert(err.message);
+          button.disabled = false;
+        }
+      });
+      action.append(button);
+      tr.append(action);
+      return tr;
+    }));
+  }
+
+  function renderFeedback(items) {
+    if (items.length === 0) {
+      $('feedback').replaceChildren(el('li', 'No feedback yet. Users can send it with /feedback.', 'empty'));
+      return;
+    }
+    $('feedback').replaceChildren(...items.map((f) => {
+      const li = el('li');
+      const who = f.username ? `@${f.username}` : (f.first_name ?? f.user_id);
+      li.append(el('small', `${who} on ${f.created_at}`), el('p', f.text));
+      return li;
+    }));
+  }
+
+  async function load() {
+    const [stats, users, feedback] = await Promise.all([api('/api/stats'), api('/api/users'), api('/api/feedback')]);
+    renderStats(stats);
+    renderUsers(users);
+    renderFeedback(feedback);
+  }
+
+  $('broadcast-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const text = $('broadcast-text').value.trim();
+    if (!text || !confirm('Send this message to every active user?')) return;
+    const button = event.submitter;
+    button.disabled = true;
+    $('status').textContent = 'Sending…';
+    try {
+      const { sent, failed } = await api('/api/broadcast', { method: 'POST', body: JSON.stringify({ text }) });
+      $('status').textContent = `Delivered to ${sent} users. ${failed} could not be reached.`;
+      $('broadcast-text').value = '';
+    } catch (err) {
+      $('status').textContent = `Could not send: ${err.message}`;
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  load().catch((err) => { $('status').textContent = `Could not load data: ${err.message}`; });
+</script>
+</body>
+</html>
