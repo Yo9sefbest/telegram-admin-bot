@@ -37,7 +37,7 @@ function createServer({ db, broadcast, adminUser, adminPassword }) {
 
   app.post('/api/users/:id/ban', (req, res) => {
     const id = Number(req.params.id);
-    if (!Number.isInteger(id) || typeof req.body?.banned !== 'boolean') {
+    if (!Number.isSafeInteger(id) || id <= 0 || typeof req.body?.banned !== 'boolean') {
       return res.status(400).json({ error: 'Send a numeric id and { "banned": true|false }' });
     }
     return db.setBanned(id, req.body.banned)
@@ -54,8 +54,9 @@ function createServer({ db, broadcast, adminUser, adminPassword }) {
   });
 
   app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const status = err.status === 400 || err.status === 413 ? err.status : 500;
+    if (status === 500) console.error(err);
+    return res.status(status).json({ error: status === 413 ? 'Request body is too large' : status === 400 ? 'Invalid JSON body' : 'Internal server error' });
   });
 
   return app;

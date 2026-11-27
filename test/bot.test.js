@@ -4,9 +4,9 @@ const { Telegram } = require('telegraf');
 const { createDb } = require('../src/db');
 const { createBot } = require('../src/bot');
 
-const ADMIN = { id: 1, first_name: 'Admin', language_code: 'en' };
-const ALI = { id: 2, first_name: 'Ali', username: 'ali', language_code: 'ar' };
-const SARA = { id: 3, first_name: 'Sara', language_code: 'en' };
+const ADMIN = { id: 1, first_name: 'Admin' };
+const ALI = { id: 2, first_name: 'Ali', username: 'ali' };
+const SARA = { id: 3, first_name: 'Sara' };
 
 function setup() {
   const db = createDb(':memory:');
@@ -39,13 +39,13 @@ function setup() {
   };
   const sentTo = (chatId) => calls.filter((c) => c.method === 'sendMessage' && c.data.chat_id === chatId);
 
-  return { db, calls, send, sentTo, broadcast };
+  return { db, bot, calls, send, sentTo, broadcast };
 }
 
-test('/start greets Arabic users in Arabic and saves them', async () => {
+test('/start greets users in English and saves them', async () => {
   const { db, send, sentTo } = setup();
   await send(ALI, '/start');
-  assert.match(sentTo(ALI.id)[0].data.text, /أهلاً Ali/);
+  assert.match(sentTo(ALI.id)[0].data.text, /Hi Ali/);
   assert.equal(db.stats().users, 1);
 });
 
@@ -88,6 +88,34 @@ test('admins cannot be banned', async () => {
   await send(ADMIN, `/ban ${ADMIN.id}`);
   assert.match(sentTo(ADMIN.id).at(-1).data.text, /cannot ban an admin/);
   assert.equal(db.isBanned(ADMIN.id), false);
+});
+
+test('rejects invalid ban ids', async () => {
+  const { send, sentTo } = setup();
+  await send(ADMIN, '/ban 0');
+  assert.match(sentTo(ADMIN.id).at(-1).data.text, /Usage: \/ban/);
+  await send(ADMIN, '/ban');
+  assert.match(sentTo(ADMIN.id).at(-1).data.text, /Usage: \/ban/);
+});
+
+test('admin feedback action keeps each Telegram message within the size limit', async () => {
+  const { db, bot, calls } = setup();
+  db.upsertUser({ id: SARA.id, username: null, first_name: SARA.first_name });
+  for (let i = 0; i < 5; i += 1) db.addFeedback(SARA.id, 'x'.repeat(1000));
+
+  await bot.handleUpdate({
+    update_id: 20,
+    callback_query: {
+      id: 'callback-1',
+      from: { is_bot: false, ...ADMIN },
+      message: { message_id: 20, date: 0, chat: { id: ADMIN.id, type: 'private' } },
+      chat_instance: 'chat-1',
+      data: 'admin:feedback',
+    },
+  });
+  const replies = calls.filter((c) => c.method === 'sendMessage' && c.data.chat_id === ADMIN.id);
+  assert.equal(replies.length, 5);
+  assert.ok(replies.every((c) => c.data.text.length <= 4096));
 });
 
 test('broadcast skips banned users', async () => {

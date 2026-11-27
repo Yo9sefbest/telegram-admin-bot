@@ -55,12 +55,23 @@ test('ban endpoint validates input and updates the user', async () => {
   const bad = await call('/api/users/10/ban', { method: 'POST', body: JSON.stringify({ banned: 'yes' }) });
   assert.equal(bad.status, 400);
 
+  const invalidId = await call('/api/users/0/ban', { method: 'POST', body: JSON.stringify({ banned: true }) });
+  assert.equal(invalidId.status, 400);
+
   const missing = await call('/api/users/999/ban', { method: 'POST', body: JSON.stringify({ banned: true }) });
   assert.equal(missing.status, 404);
 
   const ok = await call('/api/users/10/ban', { method: 'POST', body: JSON.stringify({ banned: true }) });
   assert.equal(ok.status, 200);
   assert.equal(db.isBanned(10), true);
+  close();
+});
+
+test('reports malformed JSON as a client error', async () => {
+  const { call, close } = await start();
+  const response = await call('/api/broadcast', { method: 'POST', body: '{not json' });
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: 'Invalid JSON body' });
   close();
 });
 

@@ -20,7 +20,9 @@ function fail(message) {
 if (!BOT_TOKEN) fail('BOT_TOKEN is missing (create one with @BotFather).');
 if (!ADMIN_PASSWORD || ADMIN_PASSWORD.length < 8) fail('ADMIN_PASSWORD must be at least 8 characters.');
 
-const adminIds = ADMIN_IDS.split(',').map((id) => Number(id.trim())).filter(Number.isInteger);
+const adminIds = [...new Set(ADMIN_IDS.split(',')
+  .map((id) => Number(id.trim()))
+  .filter((id) => Number.isSafeInteger(id) && id > 0))];
 if (adminIds.length === 0) console.warn('Warning: ADMIN_IDS is empty, so no one can use the admin commands.');
 
 async function main() {
@@ -29,15 +31,21 @@ async function main() {
 
   const me = await bot.telegram.getMe(); // also validates the token early
   const app = createServer({ db, broadcast, adminUser: ADMIN_USER, adminPassword: ADMIN_PASSWORD });
-  const server = app.listen(Number(PORT), HOST, () => {
-    console.log(`Dashboard: http://${HOST}:${PORT}  (user: ${ADMIN_USER})`);
-  });
+  const port = Number(PORT);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    db.close();
+    throw new Error('PORT must be an integer between 0 and 65535.');
+  }
 
-  bot.launch().catch((err) => {
-    console.error('Bot stopped with an error:', err);
-    process.exit(1);
-  });
+  await bot.launch();
   console.log(`Bot @${me.username} is running`);
+
+  const server = await new Promise((resolve, reject) => {
+    const listeningServer = app.listen(port, HOST, () => resolve(listeningServer));
+    listeningServer.once('error', reject);
+  });
+  const address = server.address();
+  console.log(`Dashboard: http://${HOST}:${address.port}  (user: ${ADMIN_USER})`);
 
   const shutdown = (signal) => {
     console.log(`${signal} received, shutting down…`);
