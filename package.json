@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node src/index.js",
+    "check:telegram": "node src/check-telegram.js",
     "test": "node --test"
   },
   "repository": {

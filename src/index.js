@@ -2,6 +2,7 @@ require('dotenv').config();
 const { createDb } = require('./db');
 const { createBot } = require('./bot');
 const { createServer } = require('./server');
+const { checkTelegram } = require('./telegram-check');
 
 const {
   BOT_TOKEN,
@@ -29,7 +30,8 @@ async function main() {
   const db = createDb();
   const { bot, broadcast } = createBot({ token: BOT_TOKEN, db, adminIds });
 
-  const me = await bot.telegram.getMe(); // also validates the token early
+  console.log('Checking Telegram connection and bot token (15-second timeout)...');
+  const me = await checkTelegram(bot.telegram);
   const app = createServer({ db, broadcast, adminUser: ADMIN_USER, adminPassword: ADMIN_PASSWORD });
   const port = Number(PORT);
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
