@@ -39,8 +39,13 @@ async function main() {
     throw new Error('PORT must be an integer between 0 and 65535.');
   }
 
-  await bot.launch();
-  console.log(`Bot @${me.username} is running`);
+  // Telegraf's launch promise stays pending while long polling is active.
+  // Start it in the background so the dashboard can come up as well.
+  bot.launch().catch((err) => {
+    console.error('Bot polling stopped with an error:', err.message);
+    process.exit(1);
+  });
+  console.log(`Bot @${me.username} polling started`);
 
   const server = await new Promise((resolve, reject) => {
     const listeningServer = app.listen(port, HOST, () => resolve(listeningServer));
