@@ -1,0 +1,30 @@
+{
+  "name": "telegram-admin-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Yo9sefbest/telegram-admin-bot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Yo9sefbest/telegram-admin-bot/issues"
+  },
+  "homepage": "https://github.com/Yo9sefbest/telegram-admin-bot#readme",
+  "dependencies": {
+    "better-sqlite3": "^13.2.0",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "telegraf": "^4.16.3"
+  }
+}
